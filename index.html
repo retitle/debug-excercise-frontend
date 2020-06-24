@@ -1,0 +1,238 @@
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hello World</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/16.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/16.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/6.26.0/babel.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/axios/0.19.2/axios.min.js"></script>
+    <style>
+      /* Issues:
+          - selectors suck
+          - use of !important
+          - unnecessary float
+          - verbose padding
+
+        Extra points:
+          - Assuming we don't want to use <table />, would it
+            be possible to use flex and/or grid? how? worth it?
+      */
+      #root {
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 12px;
+      }
+
+      #id {
+        font-weight: bold;
+        background-color: #000;
+        color: #fff;
+      }
+
+      .employee__row__alt {
+        background-color: #fafafa;
+      }
+
+      .table--pagination {
+        display: block;
+        float: right;
+      }
+
+      .table__row td {
+        border-bottom: 1px solid #f0f0f0;
+      }
+
+      .table__row td {
+        padding: 10px;
+        padding-left: 5px;
+        padding-right: 5px;
+      }
+
+      th {
+        background-color: #f0f0f0;
+        padding: 15px;
+        padding-left: 5px;
+        padding-right: 5px;
+      }
+
+      .employee__input {
+        font-size: 15px;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/jsx">
+      const utils = {
+        key: () => {
+          return `${Math.floor(Math.random() * 1000000)}`;
+        },
+
+        /*
+         * Issues:
+         *  - It doesn't work. The function is called immediately
+         *    when setting the timeout.
+         *  - Having fixed the previous issue, the problem would be
+         *    passing the right context and arguments to the original
+         *    function
+         */
+        debounce: (fn, wait) => {
+          let t = null;
+          return (...args) => {
+            if (t) {
+              clearTimeout(t);
+            }
+            t = setTimeout(fn(...args), wait);
+          }
+        }
+      };
+
+      /*
+       * Issues:
+       *  - Setting the state on the constructor
+       *  - onChange is broken. Removing the white-space would make it 
+       *    append 'undefined'
+       *  - Unnecessary prop `alt` for striped table
+       *  - Unnecessary state. Can be fully-controlled instead
+       *  - duped ids in the DOM
+       * 
+       * Extra points:
+       *  - Not quite BEM (employee__row__alt)
+       *  - get rid of the ternary in className
+       */
+      class EmployeeRow extends React.Component {
+        constructor(props) {
+          super(props);
+
+          this.state = {
+            fullName: `${props.employee.first} ${props.employee.last}`
+          }
+        }
+
+        onChange(v) {
+          const [first, last] = v.split(' ');
+          this.setState({ fullName: `${first} ${last}` });
+          Object.assign(this.props.employee, {first, last});
+        }
+
+        render() {
+          const { employee, alt } = this.props;
+
+          return (
+            <tr className={"table__row employee__row " + (alt ? "employee__row__alt" : "")}>
+              <td id="id">
+                {employee.id}
+              </td>
+              <td id="name">
+                <input className="employee__input" 
+                  value={this.state.fullName}
+                  onChange={e => this.onChange(e.target.value)}
+                />
+              </td>
+            </tr>
+          );
+        }
+      }
+
+      /*
+       * Issues:
+       *   - componentWillMount
+       *   - broken use of utils.debounce
+       *   - hardcoded crap everywhere
+       *   - no error handling
+       *   - not waiting for promise to resolve
+       *   - use of random keys for components
+       *   - {arr.length && ()}
+       *   - bad markup (table > tbody > td)
+       *   - broken pagination (works once)
+       *
+       * Worth discussing:
+       *   - setState vs useState
+       *   - floating-point arithmetic
+       *   - <table /> vs something else?
+       */
+      class EmployeeList extends React.Component {
+        state = {
+          employees: [],
+          loading: false
+        }
+
+        componentWillMount() {
+          this.setState({ loading: true });
+          const request_start = Date.now();
+          
+          utils.debounce(() => {
+            axios.get('https://2jdg5klzl0.execute-api.us-west-1.amazonaws.com/default/EmployeesChart-Api?limit=5&offset=0')
+              .then(r => {
+                this.setState({ employees: r.data });
+                this.setState({ requestTime: ((Date.now() - request_start) / 1000) - 1 });
+              })
+          }, 1000)();
+          
+          this.setState({ loading: false });
+        }
+
+        nextPage(page) {
+          const request_start = Date.now();
+          utils.debounce(() => {
+            axios.get('https://2jdg5klzl0.execute-api.us-west-1.amazonaws.com/default/EmployeesChart-Api?limit=5&offset=' + (page * 5))
+              .then(r => {
+                this.setState({ 
+                  employees: r.data, 
+                  page: page,
+                  requestTime: ((Date.now() - request_start) / 1000) - 1
+                });
+              });
+          }, 1000)();
+        }
+
+        prevPage(page) {
+          const request_start = Date.now();
+          utils.debounce(() => {
+            axios.get('https://2jdg5klzl0.execute-api.us-west-1.amazonaws.com/default/EmployeesChart-Api?limit=5&offset=' + (page * 5))
+              .then(r => {
+                this.setState({ 
+                  employees: r.data,
+                  page: page,
+                  requestTime: ((Date.now() - request_start) / 1000) - 1
+                });
+              });
+          }, 1000)();
+        }
+
+        render() {
+          return (
+            <table style={{width: '100%'}}>
+              <thead>
+                <th>ID</th>
+                <th>Name</th>
+              </thead>
+              <tbody>
+                {this.state.loading && (<td>Loading...</td>)}
+                {!this.state.employees.length && (<td>Empty...</td>)}
+                {this.state.employees.length && (
+                  this.state.employees.map((e, i) => (<EmployeeRow key={utils.key()} alt={i % 2 === 0} employee={e} />))
+                )}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td />
+                  <td class="table--pagination">
+                    Req time: {this.state.requestTime}s
+                    <button onClick={() => this.prevPage(this.state.page - 1)}>Prev</button>
+                    <button onClick={() => this.nextPage(this.state.page || 0 + 1)}>Next</button>
+                  </td>
+                </tr>
+              </tfoot>
+            </table>
+          );
+        }
+      }
+
+      ReactDOM.render(
+        <EmployeeList />,
+        document.getElementById('root')
+      );
+    </script>
+  </body>
+</html>
